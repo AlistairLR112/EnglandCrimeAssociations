@@ -10,6 +10,7 @@ The date range for this data is September 2015 - August 2018 and all constabular
 
 ```python
 import glob
+import os
 import calendar
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -482,6 +483,12 @@ rules.show(truncate=False)
     only showing top 20 rows
     
 
+
+So what does this mean? The highest confidence rule is (Bicycle Theft -> Investigation complete; no suspect identified). This means that 73% of the time, when a Bike theft occured, no suspect was found.
+
+The second and third highest confidence rules give similar statements about burglary and vehicle crime.
+
+Another interesting set of rules are where there are crimes where the suspect was unable to be prosecuted in March, June and July "implies" that it is likely (around 62% of the time) to be a Violence and/or sexual offence.
 
 
 ```python
