@@ -244,7 +244,7 @@ plt.show()
 ```
 
 
-![png](output_35_0.png)
+![png](output_32_0.png)
 
 
 There appear to be a large amount of NAs, so let's look at the distribution without that
@@ -257,7 +257,7 @@ plt.show()
 ```
 
 
-![png](output_37_0.png)
+![png](output_34_0.png)
 
 
 Deansgate, Manchester is Manchester 054C, don't go there
@@ -298,7 +298,7 @@ plt.show()
 ```
 
 
-![png](output_42_0.png)
+![png](output_39_0.png)
 
 
 Lets find out what the NAs are being caused by
