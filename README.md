@@ -57,7 +57,7 @@ sqlCtx = SQLContext(sc)
 import pyspark.sql.functions as F
 ```
 
-The police data comes in several csv files with a folder for each Month-Year. We will concatenate these
+The police data comes in several csv files with a folder for each Month-Year. Within each folder, there is a CSV file for each constabulary. We will concatenate these
 
 
 ```python
@@ -90,6 +90,8 @@ police_data_df.show(5)
     
 
 
+Each dataset contains the following columns:
+
 
 ```python
 police_data_df.printSchema()
@@ -110,6 +112,17 @@ police_data_df.printSchema()
      |-- Context: string (nullable = true)
     
 
+
+NOTE: LSOA (Lower Layer Super Output Area)
+
+From NHS Data Dictionary (https://www.datadictionary.nhs.uk/data_dictionary/nhs_business_definitions/l/lower_layer_super_output_area_de.asp?shownav=1)
+    
+"<i>A Lower Layer Super Output Area (LSOA) is a GEOGRAPHIC AREA.
+Lower Layer Super Output Areas are a geographic hierarchy designed to improve the reporting of small area statistics in England and Wales.
+Lower Layer Super Output Areas are built from groups of contiguous Output Areas and have been automatically generated to be as consistent in population size as possible, and typically contain from four to six Output Areas. The Minimum population is 1000 and the mean is 1500.
+There is a Lower Layer Super Output Area for each POSTCODE in England and Wales</i>"
+
+How many Rows do we have?
 
 
 ```python
@@ -203,7 +216,7 @@ plt.show()
 ```
 
 
-![png](output_28_0.png)
+![png](output_31_0.png)
 
 
 Anti-social behaviour makes up about 27% of crime in England - which is expected... It is concerning that violence and sexual offences is in second place
@@ -231,7 +244,7 @@ plt.show()
 ```
 
 
-![png](output_32_0.png)
+![png](output_35_0.png)
 
 
 There appear to be a large amount of NAs, so let's look at the distribution without that
@@ -244,7 +257,7 @@ plt.show()
 ```
 
 
-![png](output_34_0.png)
+![png](output_37_0.png)
 
 
 Deansgate, Manchester is Manchester 054C, don't go there
@@ -285,7 +298,7 @@ plt.show()
 ```
 
 
-![png](output_39_0.png)
+![png](output_42_0.png)
 
 
 Lets find out what the NAs are being caused by
@@ -504,5 +517,6 @@ rules_df.write.csv('crime_rules.csv')
 
 
 ```python
+# Stop the Spark Session
 sc.stop()
 ```
