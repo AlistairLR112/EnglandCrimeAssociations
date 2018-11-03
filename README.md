@@ -10,6 +10,8 @@ The date range for this data is September 2015 - August 2018 and all constabular
 ## What is an Association Rule?
 *Association rule learning is a rule-based machine learning method for discovering interesting relations between variables in large databases. It is intended to identify strong rules discovered in databases using some measures of interestingness. This rule-based approach also generates new rules as it analyzes more data. The ultimate goal, assuming a large enough dataset, is to help a machine mimic the human brain’s feature extraction and abstract association capabilities from new uncategorized data.*
 
+## Starting the Project
+
 ```python
 import glob
 import os
