@@ -7,6 +7,10 @@ The data can be downloaded from here: https://data.police.uk/data/.
 
 The date range for this data is September 2015 - August 2018 and all constabularies in England were selected (excluding British Transport Police)
 
+## What is an Association Rule?
+"_Association rule learning is a rule-based machine learning method for discovering interesting relations between variables in large databases. It is intended to identify strong rules discovered in databases using some measures of interestingness.[1] This rule-based approach also generates new rules as it analyzes more data. The ultimate goal, assuming a large enough dataset, is to help a machine mimic the human brain’s feature extraction and abstract association capabilities from new uncategorized data.[2]
+
+Based on the concept of strong rules, Rakesh Agrawal, Tomasz Imieliński and Arun Swami[3] introduced association rules for discovering regularities between products in large-scale transaction data recorded by point-of-sale (POS) systems in supermarkets. For example, the rule {\displaystyle \{\mathrm {onions,potatoes} \}\Rightarrow \{\mathrm {burger} \}} \{{\mathrm  {onions,potatoes}}\}\Rightarrow \{{\mathrm  {burger}}\} found in the sales data of a supermarket would indicate that if a customer buys onions and potatoes together, they are likely to also buy hamburger meat. Such information can be used as the basis for decisions about marketing activities such as, e.g., promotional pricing or product placements."_
 
 ```python
 import glob
@@ -142,7 +146,7 @@ num_rows
 
 
 ## Cleaning the Data
-
+The data is not in the format we need in order to infer association rules.
 
 ```python
 # The month column in the data is actually a Year-Month, here we will split that on the - delimiter and create a Year and Month_of_Year Column
