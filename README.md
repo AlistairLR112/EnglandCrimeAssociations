@@ -1,5 +1,5 @@
 
-# England Crime Association Rules
+# Association Rule Mining for reported Crimes in England
 The aim here is to see if there are any associations between the reported aspects of crime, such as Month of Year, Location, Crime type etc.
 This will be done in Pyspark due to the size of the data but it will still be possible to execute on a local cluster.
 
@@ -10,7 +10,10 @@ The date range for this data is September 2015 - August 2018 and all constabular
 ## What is an Association Rule?
 *Association rule learning is a rule-based machine learning method for discovering interesting relations between variables in large databases. It is intended to identify strong rules discovered in databases using some measures of interestingness. This rule-based approach also generates new rules as it analyzes more data. The ultimate goal, assuming a large enough dataset, is to help a machine mimic the human brain’s feature extraction and abstract association capabilities from new uncategorized data.*
 
-## Starting the Project
+We will be looking for rules with a high level of confidence
+
+*Confidence is an indication of how often the rule has been found to be true... Confidence can be interpreted as an estimate of the conditional probability*
+
 
 ```python
 import glob
@@ -41,10 +44,6 @@ spark = SparkSession.builder\
 
 ```python
 sc = spark.sparkContext
-```
-
-
-```python
 # Set up a SQL Context
 sqlCtx = SQLContext(sc)
 ```
@@ -117,6 +116,86 @@ police_data_df.printSchema()
     
 
 
+The Data Dictionary is as follows
+
+
+```python
+dictionary = pd.read_csv('data_dictionary.csv')
+```
+
+
+```python
+pd.set_option('display.max_colwidth', -1)
+dictionary
+```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Field</th>
+      <th>Meaning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Reported by</td>
+      <td>The force that provided the data about the crime.</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Falls within</td>
+      <td>At present, also the force that provided the data about the crime. This is currently being looked into and is likely to change in the near future.</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>Longitude and Latitude</td>
+      <td>The anonymised coordinates of the crime. See Location Anonymisation for more information.</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>LSOA code and LSOA name</td>
+      <td>References to the Lower Layer Super Output Area that the anonymised point falls into, according to the LSOA boundaries provided by the Office for National Statistics.</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Crime type</td>
+      <td>One of the crime types listed in the Police.UK FAQ.</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>Last outcome category</td>
+      <td>A reference to whichever of the outcomes associated with the crime occurred most recently. For example, this crime's 'Last outcome category' would be 'Formal action is not in the public interest'.</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>Context</td>
+      <td>A field provided for forces to provide additional human-readable data about individual crimes. Currently, for newly added CSVs, this is always empty.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
 NOTE: LSOA (Lower Layer Super Output Area)
 
 From NHS Data Dictionary (https://www.datadictionary.nhs.uk/data_dictionary/nhs_business_definitions/l/lower_layer_super_output_area_de.asp?shownav=1)
@@ -146,7 +225,7 @@ num_rows
 
 
 ## Cleaning the Data
-The data is not in the format we need in order to infer association rules.
+
 
 ```python
 # The month column in the data is actually a Year-Month, here we will split that on the - delimiter and create a Year and Month_of_Year Column
@@ -165,14 +244,25 @@ police_data_df = police_data_df.withColumn("Year", police_data_df.Year.cast("int
 
 ```python
 # Check this worked
-police_data_df
+police_data_df.printSchema()
 ```
 
-
-
-
-    DataFrame[Crime ID: string, Month: string, Reported by: string, Falls within: string, Longitude: string, Latitude: string, Location: string, LSOA code: string, LSOA name: string, Crime type: string, Last outcome category: string, Context: string, Year: int, Month_of_Year: int]
-
+    root
+     |-- Crime ID: string (nullable = true)
+     |-- Month: string (nullable = true)
+     |-- Reported by: string (nullable = true)
+     |-- Falls within: string (nullable = true)
+     |-- Longitude: string (nullable = true)
+     |-- Latitude: string (nullable = true)
+     |-- Location: string (nullable = true)
+     |-- LSOA code: string (nullable = true)
+     |-- LSOA name: string (nullable = true)
+     |-- Crime type: string (nullable = true)
+     |-- Last outcome category: string (nullable = true)
+     |-- Context: string (nullable = true)
+     |-- Year: integer (nullable = true)
+     |-- Month_of_Year: integer (nullable = true)
+    
 
 
 
@@ -194,11 +284,102 @@ police_data_df = police_data_df.withColumn("Month_of_Year", get_month_name(polic
 police_data_df = police_data_df.withColumn('Location', F.regexp_replace('Location', 'On or near ', ''))
 ```
 
-## Exploratory Analysis
+
+```python
+police_data_df = police_data_df.withColumn("Town_City", F.regexp_replace('LSOA name', ' [0-9]{3}\w', ''))
+```
 
 
 ```python
-# Look at most common crimes
+police_data_df.take(1)
+```
+
+
+
+
+    [Row(Crime ID='5ac3055389bf0d7f7598892a8835ce3b3a2745218bde6f9d16de014ee837ec1e', Month='2017-07', Reported by='Metropolitan Police Service', Falls within='Metropolitan Police Service', Longitude='0.763024', Latitude='51.210698', Location='Wind Hill Lane', LSOA code='E01024033', LSOA name='Ashford 002E', Crime type='Other theft', Last outcome category='Investigation complete; no suspect identified', Context=None, Year=2017, Month_of_Year='Jul', Town_City='Ashford')]
+
+
+
+## Exploratory Analysis
+
+#### Number of Incidents over time
+
+
+```python
+crime_over_time = police_data_df\
+                 .groupBy(["Month_of_Year", "Year"])\
+                 .count()\
+                 .toPandas()
+```
+
+
+```python
+months = map(lambda x: calendar.month_abbr[x], range(1, 13))
+crime_over_time["Month_of_Year"] = pd.Categorical(crime_over_time["Month_of_Year"], categories=months)
+crime_time_series = crime_over_time.set_index(["Year", "Month_of_Year"]).sort_index().squeeze()
+```
+
+
+```python
+plt.figure(figsize=(20, 5))
+ax = crime_time_series.plot(kind = "line", color="b")
+ax.set_xticks(range(0, len(crime_time_series.index)))
+ax.set_xticklabels(list(crime_time_series.index))
+crime_time_series.plot(rot=90)
+plt.show()
+```
+
+
+![png](output_37_0.png)
+
+
+
+```python
+There isn'
+```
+
+#### Most Common Crime and Outcome Category Combination
+
+
+```python
+outcome_counts = police_data_df\
+                 .groupBy(["Crime type", "Last outcome category"])\
+                 .count()\
+                 .toPandas()
+```
+
+
+```python
+outcome_counts_series = outcome_counts\
+.set_index(["Crime type", "Last outcome category"])\
+.squeeze()\
+.sort_values(ascending=False)\
+.head(20)
+```
+
+
+```python
+outcome_counts_series\
+.sort_values(ascending=True)\
+.plot(kind="barh", figsize=(10,10))
+```
+
+
+
+
+    <matplotlib.axes._subplots.AxesSubplot at 0x1158f2828>
+
+
+
+
+![png](output_42_1.png)
+
+
+#### The Most Common Type of Crime
+
+
+```python
 crime_type_counts = police_data_df\
                     .groupBy(police_data_df['Crime type'])\
                     .count()\
@@ -220,16 +401,17 @@ plt.show()
 ```
 
 
-![png](output_28_0.png)
+![png](output_46_0.png)
 
 
 Anti-social behaviour makes up about 27% of crime in England - which is expected... It is concerning that violence and sexual offences is in second place
 
+#### Which Town or City has the most crime?
+
 
 ```python
-# Find the areas where crime occurs the most
-crime_area_counts = police_data_df\
-                    .groupBy(police_data_df['LSOA name'])\
+crime_town_city_counts = police_data_df\
+                    .groupBy(police_data_df['Town_City'])\
                     .count()\
                     .sort(F.col("count").desc())\
                     .toPandas()
@@ -237,74 +419,10 @@ crime_area_counts = police_data_df\
 
 
 ```python
-crime_area_counts_series = crime_area_counts.set_index("LSOA name").squeeze().head(15)
+crime_town_city_counts ## TO BE COMPLETED
 ```
 
-
-```python
-plt.figure(figsize=(10, 5))
-crime_area_counts_series.plot(kind = "bar")
-plt.show()
-```
-
-
-![png](output_32_0.png)
-
-
-There appear to be a large amount of NAs, so let's look at the distribution without that
-
-
-```python
-plt.figure(figsize=(10, 5))
-crime_area_counts_series[1:].plot(kind = "bar", color="k")
-plt.show()
-```
-
-
-![png](output_34_0.png)
-
-
-Deansgate, Manchester is Manchester 054C, don't go there
-
-
-```python
-# Find the months where the most crimes have occurred
-crime_month_counts = police_data_df\
-                    .groupBy(police_data_df['Month_of_Year'])\
-                    .count()\
-                    .sort(F.col("count").desc())\
-                    .toPandas()
-```
-
-
-```python
-# Convert Month_of_Year to a categorical variable
-crime_month_counts["Month_of_Year"] = pd.Categorical(crime_month_counts["Month_of_Year"], 
-                                                     categories=["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
-```
-
-
-```python
-crime_month_counts_series = crime_month_counts\
-                            .sort_values(by="Month_of_Year")\
-                            .set_index("Month_of_Year")\
-                            .squeeze()
-```
-
-
-```python
-plt.figure(figsize=(15, 5))
-ax = crime_month_counts_series.plot(kind = "line", color="b")
-ax.set_xticks(range(0, len(crime_month_counts_series.index)))
-ax.set_xticklabels(list(crime_month_counts_series.index), rotation=45)
-plt.show()
-```
-
-
-![png](output_39_0.png)
-
-
+There appear to be a large amount of NAs....
 Lets find out what the NAs are being caused by
 
 
@@ -334,7 +452,7 @@ So only about two percent of the data has no location information, we can exclud
 # Remove the crimes with no crime ID and no LSOA Information.
 police_data_modelling = police_data_df.filter(police_data_df["Crime ID"].isNotNull() & police_data_df["LSOA name"].isNotNull())
 # Select the Features of interest
-police_data_modelling = police_data_modelling[["Falls within", "Location", "LSOA name", "Crime type", "Last outcome category", "Month_of_Year"]]
+police_data_modelling = police_data_modelling[["Falls within", "Town_City", "Crime type", "Last outcome category", "Month_of_Year"]]
 ```
 
 
@@ -342,13 +460,13 @@ police_data_modelling = police_data_modelling[["Falls within", "Location", "LSOA
 police_data_modelling.show(3)
 ```
 
-    +--------------------+--------------+--------------------+-------------+---------------------+-------------+
-    |        Falls within|      Location|           LSOA name|   Crime type|Last outcome category|Month_of_Year|
-    +--------------------+--------------+--------------------+-------------+---------------------+-------------+
-    |Metropolitan Poli...|Wind Hill Lane|        Ashford 002E|  Other theft| Investigation com...|          Jul|
-    |Metropolitan Poli...|     Main Road|        Babergh 011B| Public order| Investigation com...|          Jul|
-    |Metropolitan Poli...|   Hazel Grove|Barking and Dagen...|Bicycle theft| Status update una...|          Jul|
-    +--------------------+--------------+--------------------+-------------+---------------------+-------------+
+    +--------------------+--------------------+-------------+---------------------+-------------+
+    |        Falls within|           Town_City|   Crime type|Last outcome category|Month_of_Year|
+    +--------------------+--------------------+-------------+---------------------+-------------+
+    |Metropolitan Poli...|             Ashford|  Other theft| Investigation com...|          Jul|
+    |Metropolitan Poli...|             Babergh| Public order| Investigation com...|          Jul|
+    |Metropolitan Poli...|Barking and Dagenham|Bicycle theft| Status update una...|          Jul|
+    +--------------------+--------------------+-------------+---------------------+-------------+
     only showing top 3 rows
     
 
@@ -358,8 +476,7 @@ The FP growth algorithm (like association rules), needs the items to be concaten
 
 ```python
 police_item_set = police_data_modelling.withColumn("items", F.array(police_data_modelling["Falls within"],
-                                                                    police_data_modelling["Location"],
-                                                                    police_data_modelling["LSOA name"],
+                                                                    police_data_modelling["Town_City"],
                                                                     police_data_modelling["Crime type"],
                                                                     police_data_modelling["Last outcome category"],
                                                                     police_data_modelling["Month_of_Year"]))
@@ -369,157 +486,266 @@ police_item_set = police_item_set.withColumn("id", F.monotonically_increasing_id
 
 
 ```python
-police_item_set.show()
+police_item_set.show(truncate=False)
 ```
 
-    +--------------------+---+
-    |               items| id|
-    +--------------------+---+
-    |[Metropolitan Pol...|  0|
-    |[Metropolitan Pol...|  1|
-    |[Metropolitan Pol...|  2|
-    |[Metropolitan Pol...|  3|
-    |[Metropolitan Pol...|  4|
-    |[Metropolitan Pol...|  5|
-    |[Metropolitan Pol...|  6|
-    |[Metropolitan Pol...|  7|
-    |[Metropolitan Pol...|  8|
-    |[Metropolitan Pol...|  9|
-    |[Metropolitan Pol...| 10|
-    |[Metropolitan Pol...| 11|
-    |[Metropolitan Pol...| 12|
-    |[Metropolitan Pol...| 13|
-    |[Metropolitan Pol...| 14|
-    |[Metropolitan Pol...| 15|
-    |[Metropolitan Pol...| 16|
-    |[Metropolitan Pol...| 17|
-    |[Metropolitan Pol...| 18|
-    |[Metropolitan Pol...| 19|
-    +--------------------+---+
+    +-------------------------------------------------------------------------------------------------------------------------------------+---+
+    |items                                                                                                                                |id |
+    +-------------------------------------------------------------------------------------------------------------------------------------+---+
+    |[Metropolitan Police Service, Ashford, Other theft, Investigation complete; no suspect identified, Jul]                              |0  |
+    |[Metropolitan Police Service, Babergh, Public order, Investigation complete; no suspect identified, Jul]                             |1  |
+    |[Metropolitan Police Service, Barking and Dagenham, Bicycle theft, Status update unavailable, Jul]                                   |2  |
+    |[Metropolitan Police Service, Barking and Dagenham, Burglary, Investigation complete; no suspect identified, Jul]                    |3  |
+    |[Metropolitan Police Service, Barking and Dagenham, Burglary, Status update unavailable, Jul]                                        |4  |
+    |[Metropolitan Police Service, Barking and Dagenham, Criminal damage and arson, Investigation complete; no suspect identified, Jul]   |5  |
+    |[Metropolitan Police Service, Barking and Dagenham, Criminal damage and arson, Investigation complete; no suspect identified, Jul]   |6  |
+    |[Metropolitan Police Service, Barking and Dagenham, Other theft, Status update unavailable, Jul]                                     |7  |
+    |[Metropolitan Police Service, Barking and Dagenham, Other theft, Status update unavailable, Jul]                                     |8  |
+    |[Metropolitan Police Service, Barking and Dagenham, Other theft, Status update unavailable, Jul]                                     |9  |
+    |[Metropolitan Police Service, Barking and Dagenham, Public order, Investigation complete; no suspect identified, Jul]                |10 |
+    |[Metropolitan Police Service, Barking and Dagenham, Public order, Status update unavailable, Jul]                                    |11 |
+    |[Metropolitan Police Service, Barking and Dagenham, Public order, Investigation complete; no suspect identified, Jul]                |12 |
+    |[Metropolitan Police Service, Barking and Dagenham, Public order, Investigation complete; no suspect identified, Jul]                |13 |
+    |[Metropolitan Police Service, Barking and Dagenham, Robbery, Investigation complete; no suspect identified, Jul]                     |14 |
+    |[Metropolitan Police Service, Barking and Dagenham, Robbery, Investigation complete; no suspect identified, Jul]                     |15 |
+    |[Metropolitan Police Service, Barking and Dagenham, Robbery, Status update unavailable, Jul]                                         |16 |
+    |[Metropolitan Police Service, Barking and Dagenham, Robbery, Investigation complete; no suspect identified, Jul]                     |17 |
+    |[Metropolitan Police Service, Barking and Dagenham, Violence and sexual offences, Investigation complete; no suspect identified, Jul]|18 |
+    |[Metropolitan Police Service, Barking and Dagenham, Violence and sexual offences, Investigation complete; no suspect identified, Jul]|19 |
+    +-------------------------------------------------------------------------------------------------------------------------------------+---+
     only showing top 20 rows
     
 
 
 ## Modelling: Create the FP growth algorithm
-For Association rules.
-*"In Data Mining the task of finding frequent pattern in large databases is very important and has been studied in large scale in the past few years. Unfortunately, this task is computationally expensive, especially when a large number of patterns exist."*
-
-*"The FP-Growth Algorithm, proposed by Han in, is an efficient and scalable method for mining the complete set of frequent patterns by pattern fragment growth, using an extended prefix-tree structure for storing compressed and crucial information about frequent patterns named frequent-pattern tree (FP-tree)"*
-
-
-```python
-int(0.01*num_rows)
-```
-
-
-
-
-    183764.29
-
-
+For Association rules
 
 
 ```python
 # Use a low support as we have a large dataset
-fpGrowth = FPGrowth(itemsCol="items", minSupport=0.01, minConfidence=0.5)
+fpGrowth = FPGrowth(itemsCol="items", minSupport=0.01, minConfidence=0.6)
 model = fpGrowth.fit(police_item_set)
-```
-
-
-```python
-model.save('crime_association_rules')
-```
-
-
-```python
-# Display frequent itemsets.
-model.freqItemsets.show()
-```
-
-    +--------------------+-------+
-    |               items|   freq|
-    +--------------------+-------+
-    |[Investigation co...|5891360|
-    |[Violence and sex...|4044715|
-    |[Violence and sex...| 870331|
-    |[Unable to prosec...|2584597|
-    |[Unable to prosec...|1606798|
-    |[Metropolitan Pol...|2332585|
-    |[Metropolitan Pol...| 633002|
-    |[Metropolitan Pol...| 359959|
-    |[Metropolitan Pol...|1018701|
-    |[Status update un...|1673528|
-    |[Status update un...| 495868|
-    |[Status update un...| 769943|
-    |[Criminal damage ...|1660452|
-    |[Criminal damage ...| 208735|
-    |[Criminal damage ...| 163639|
-    |[Criminal damage ...| 181178|
-    |[Criminal damage ...|1040286|
-    |       [Other theft]|1478664|
-    |[Other theft, Una...| 161679|
-    |[Other theft, Sta...| 207261|
-    +--------------------+-------+
-    only showing top 20 rows
-    
-
-
-
-```python
-# Display generated association rules.
 rules = model.associationRules
 ```
 
-
-```python
-# Show all of the association rules
-rules.show(truncate=False)
-```
-
-    +-----------------------------------------------------------+-----------------------------------------------+------------------+
-    |antecedent                                                 |consequent                                     |confidence        |
-    +-----------------------------------------------------------+-----------------------------------------------+------------------+
-    |[Vehicle crime]                                            |[Investigation complete; no suspect identified]|0.7025339145608448|
-    |[Nottinghamshire Police]                                   |[Investigation complete; no suspect identified]|0.5031396256585671|
-    |[West Yorkshire Police, Unable to prosecute suspect]       |[Violence and sexual offences]                 |0.6077604018402373|
-    |[Vehicle crime, Metropolitan Police Service]               |[Status update unavailable]                    |0.5814401324385522|
-    |[Northumbria Police]                                       |[Investigation complete; no suspect identified]|0.5288024061072212|
-    |[West Yorkshire Police, Violence and sexual offences]      |[Unable to prosecute suspect]                  |0.5780507615986584|
-    |[Other theft]                                              |[Investigation complete; no suspect identified]|0.6443891242364729|
-    |[Burglary]                                                 |[Investigation complete; no suspect identified]|0.7059772913894159|
-    |[Criminal damage and arson]                                |[Investigation complete; no suspect identified]|0.6265077219937704|
-    |[Jun, Unable to prosecute suspect]                         |[Violence and sexual offences]                 |0.6230002735017615|
-    |[Mar, Unable to prosecute suspect]                         |[Violence and sexual offences]                 |0.6212513750757694|
-    |[Petrol Station]                                           |[Investigation complete; no suspect identified]|0.5818037460301583|
-    |[Bicycle theft]                                            |[Investigation complete; no suspect identified]|0.7261707438073739|
-    |[Thames Valley Police]                                     |[Investigation complete; no suspect identified]|0.5040529243752675|
-    |[Metropolitan Police Service, Violence and sexual offences]|[Investigation complete; no suspect identified]|0.5686538115203428|
-    |[Avon and Somerset Constabulary]                           |[Status update unavailable]                    |0.5053206612241582|
-    |[Greater Manchester Police]                                |[Investigation complete; no suspect identified]|0.5852261498228214|
-    |[Jul, Unable to prosecute suspect]                         |[Violence and sexual offences]                 |0.6218482147689003|
-    |[Theft from the person]                                    |[Investigation complete; no suspect identified]|0.5979440164912662|
-    |[West Midlands Police]                                     |[Investigation complete; no suspect identified]|0.596107625844654 |
-    +-----------------------------------------------------------+-----------------------------------------------+------------------+
-    only showing top 20 rows
-    
-
-
-So what does this mean? The highest confidence rule is (Bicycle Theft -> Investigation complete; no suspect identified). This means that 73% of the time, when a Bike theft occured, no suspect was found.
-
-The second and third highest confidence rules give similar statements about burglary and vehicle crime.
-
-Another interesting set of rules are where there are crimes where the suspect was unable to be prosecuted in March, June and July "implies" that it is likely (around 62% of the time) to be a Violence and/or sexual offence.
+#### Extract the Association Rules
 
 
 ```python
-#' Minor tidying to save as csv
+#' Minor tidying to save as pandas dataframe
 rules_df = rules.withColumn("antecedent" ,F.concat_ws(",", rules["antecedent"]))\
-          .withColumn("consequent" ,F.concat_ws(",", rules["consequent"]))
+          .withColumn("consequent" ,F.concat_ws(",", rules["consequent"]))\
+          .sort(F.col("confidence"))
 ```
 
 
 ```python
-rules_df.write.csv('crime_rules.csv')
+rules_df_pd = rules_df.toPandas()
+```
+
+
+```python
+rules_df_pd
+```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>antecedent</th>
+      <th>consequent</th>
+      <th>confidence</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Birmingham</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.605648</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Birmingham,West Midlands Police</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.606086</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>West Yorkshire Police,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.607760</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Apr,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.617650</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Mar,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.621251</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.621682</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>Jul,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.621848</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>May,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.622494</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>Jun,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.623000</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>Criminal damage and arson</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.626508</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>Manchester</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.641456</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>Manchester,Greater Manchester Police</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.641596</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>Other theft</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.644389</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>Vehicle crime</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.702534</td>
+    </tr>
+    <tr>
+      <th>14</th>
+      <td>Burglary</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.705977</td>
+    </tr>
+    <tr>
+      <th>15</th>
+      <td>Bicycle theft</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.726171</td>
+    </tr>
+    <tr>
+      <th>16</th>
+      <td>Vehicle crime,Status update unavailable</td>
+      <td>Metropolitan Police Service</td>
+      <td>0.774634</td>
+    </tr>
+    <tr>
+      <th>17</th>
+      <td>Birmingham</td>
+      <td>West Midlands Police</td>
+      <td>0.998351</td>
+    </tr>
+    <tr>
+      <th>18</th>
+      <td>Sheffield</td>
+      <td>South Yorkshire Police</td>
+      <td>0.998930</td>
+    </tr>
+    <tr>
+      <th>19</th>
+      <td>Leeds</td>
+      <td>West Yorkshire Police</td>
+      <td>0.999067</td>
+    </tr>
+    <tr>
+      <th>20</th>
+      <td>Birmingham,Investigation complete; no suspect ...</td>
+      <td>West Midlands Police</td>
+      <td>0.999073</td>
+    </tr>
+    <tr>
+      <th>21</th>
+      <td>Westminster</td>
+      <td>Metropolitan Police Service</td>
+      <td>0.999508</td>
+    </tr>
+    <tr>
+      <th>22</th>
+      <td>Bradford</td>
+      <td>West Yorkshire Police</td>
+      <td>0.999553</td>
+    </tr>
+    <tr>
+      <th>23</th>
+      <td>Liverpool</td>
+      <td>Merseyside Police</td>
+      <td>0.999558</td>
+    </tr>
+    <tr>
+      <th>24</th>
+      <td>Bristol</td>
+      <td>Avon and Somerset Constabulary</td>
+      <td>0.999614</td>
+    </tr>
+    <tr>
+      <th>25</th>
+      <td>Manchester</td>
+      <td>Greater Manchester Police</td>
+      <td>0.999700</td>
+    </tr>
+    <tr>
+      <th>26</th>
+      <td>Manchester,Investigation complete; no suspect ...</td>
+      <td>Greater Manchester Police</td>
+      <td>0.999919</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+
+```python
+rules_df_pd.to_csv('crime_associations.csv')
 ```
 
 
@@ -527,3 +753,165 @@ rules_df.write.csv('crime_rules.csv')
 # Stop the Spark Session
 sc.stop()
 ```
+
+## Rules Analysis
+As you can see, the rules in the 98%+ confidence region appear to be rules that don't really tell us anything. i.e. Birmingham -> West Midlands Police. Let's remove those from the analysis
+
+
+```python
+useful_rules_df = rules_df_pd[rules_df_pd['confidence'] < 0.98]\
+    .sort_values(by="confidence", ascending = False)
+```
+
+
+```python
+useful_rules_df
+```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>antecedent</th>
+      <th>consequent</th>
+      <th>confidence</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>16</th>
+      <td>Vehicle crime,Status update unavailable</td>
+      <td>Metropolitan Police Service</td>
+      <td>0.774634</td>
+    </tr>
+    <tr>
+      <th>15</th>
+      <td>Bicycle theft</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.726171</td>
+    </tr>
+    <tr>
+      <th>14</th>
+      <td>Burglary</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.705977</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>Vehicle crime</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.702534</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>Other theft</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.644389</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>Manchester,Greater Manchester Police</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.641596</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>Manchester</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.641456</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>Criminal damage and arson</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.626508</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>Jun,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.623000</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>May,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.622494</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>Jul,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.621848</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.621682</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Mar,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.621251</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>Apr,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.617650</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>West Yorkshire Police,Unable to prosecute suspect</td>
+      <td>Violence and sexual offences</td>
+      <td>0.607760</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>Birmingham,West Midlands Police</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.606086</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>Birmingham</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.605648</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+Now the rule with the highest confidence is **(Vehicle Crime + Status update unavailable -> Metropolitan Police Service)**. So what does this mean? This means that 77% of the time, when a Vehicle Crime occured that has no Status update about its outcome, it fell within the jurisdiction of the Metropolitan Police.
+
+The other 3 rules in the 70%+ confidence/conditional probability region follow a similar pattern.
+- **(Bicycle Theft -> Investigation complete; no suspect identified)**
+- **(Burglary -> Investigation complete; no suspect identified)**
+- **(Vehicle Crime -> Investigation complete; no suspect identified)**
+
+So, it implies that the probability of no suspect being identified after a bike theft, burglary or vehicle crime is about 70-72%.
+
+Another interesting rule is **(Manchester -> Investigation complete; no suspect identified)** with a probability of 64%. Good thing I have never been to Manchester!
+
+Another block of these rules is **(Unable to prosecute suspect -> Violence and sexual offences)**, which sounds worrying but doesn't really say much. The conditional probability of a crime being a violence and sexual offence, given that you were unable to prosecute the suspect is around 62%.
