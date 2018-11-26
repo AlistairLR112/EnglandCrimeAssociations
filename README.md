@@ -18,25 +18,31 @@ We will be looking for rules with a high level of confidence
 ```python
 import glob
 import os
-import calendar
 import pandas as pd
 import matplotlib.pyplot as plt
+import tabulate
+import seaborn as sns
+```
+
+
+```python
+%load_ext autoreload
+%autoreload 2
 ```
 
 #### Set up Spark
-Running Spark locally
+Running Spark locally using 6 out of 8 cores
 
 
 ```python
 from pyspark import SparkContext
-from pyspark.ml.fpm import FPGrowth
 from pyspark.sql import SQLContext, SparkSession
 ```
 
 
 ```python
 spark = SparkSession.builder\
-        .master("local")\
+        .master("local[6]")\
         .appName("Crime Assocations")\
         .getOrCreate()
 ```
@@ -57,7 +63,7 @@ sqlCtx = SQLContext(sc)
 
 
 ```python
-import pyspark.sql.functions as F
+from p01_load import load_data
 ```
 
 The police data comes in several csv files with a folder for each Month-Year. Within each folder, there is a CSV file for each constabulary. We will concatenate these
@@ -65,13 +71,16 @@ The police data comes in several csv files with a folder for each Month-Year. Wi
 
 ```python
 # Using a glob here to get all of the locations of the files we need
-file_locations = glob.glob(os.getcwd() + "/all_data/*/*.csv")
+path = glob.glob(os.getcwd() + "/all_data/*/*.csv")
 ```
 
 
 ```python
-police_data_df = sqlCtx.read.format("csv").option("header", "true").load(file_locations)
+police_data_df = load_data(file_locations=path, sqlcontext=sqlCtx)
 ```
+
+    Loading CSV files to sqlcontext
+
 
 #### Inspecting the data
 
@@ -105,8 +114,8 @@ police_data_df.printSchema()
      |-- Month: string (nullable = true)
      |-- Reported by: string (nullable = true)
      |-- Falls within: string (nullable = true)
-     |-- Longitude: string (nullable = true)
-     |-- Latitude: string (nullable = true)
+     |-- Longitude: double (nullable = true)
+     |-- Latitude: double (nullable = true)
      |-- Location: string (nullable = true)
      |-- LSOA code: string (nullable = true)
      |-- LSOA name: string (nullable = true)
@@ -126,74 +135,17 @@ dictionary = pd.read_csv('data_dictionary.csv')
 
 ```python
 pd.set_option('display.max_colwidth', -1)
-dictionary
+for elem in dictionary.to_records(index=False):
+    print(elem[0] + ": " + elem[1])
 ```
 
-
-
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Field</th>
-      <th>Meaning</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>Reported by</td>
-      <td>The force that provided the data about the crime.</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>Falls within</td>
-      <td>At present, also the force that provided the data about the crime. This is currently being looked into and is likely to change in the near future.</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>Longitude and Latitude</td>
-      <td>The anonymised coordinates of the crime. See Location Anonymisation for more information.</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>LSOA code and LSOA name</td>
-      <td>References to the Lower Layer Super Output Area that the anonymised point falls into, according to the LSOA boundaries provided by the Office for National Statistics.</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>Crime type</td>
-      <td>One of the crime types listed in the Police.UK FAQ.</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>Last outcome category</td>
-      <td>A reference to whichever of the outcomes associated with the crime occurred most recently. For example, this crime's 'Last outcome category' would be 'Formal action is not in the public interest'.</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>Context</td>
-      <td>A field provided for forces to provide additional human-readable data about individual crimes. Currently, for newly added CSVs, this is always empty.</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
+    Reported by: The force that provided the data about the crime.
+    Falls within: At present, also the force that provided the data about the crime. This is currently being looked into and is likely to change in the near future.
+    Longitude and Latitude: The anonymised coordinates of the crime. See Location Anonymisation for more information.
+    LSOA code and LSOA name: References to the Lower Layer Super Output Area that the anonymised point falls into, according to the LSOA boundaries provided by the Office for National Statistics.
+    Crime type: One of the crime types listed in the Police.UK FAQ.
+    Last outcome category: A reference to whichever of the outcomes associated with the crime occurred most recently. For example, this crime's 'Last outcome category' would be 'Formal action is not in the public interest'.
+    Context: A field provided for forces to provide additional human-readable data about individual crimes. Currently, for newly added CSVs, this is always empty.
 
 
 NOTE: LSOA (Lower Layer Super Output Area)
@@ -228,23 +180,27 @@ num_rows
 
 
 ```python
+from p02_clean import clean_months, clean_location
+```
+
+
+```python
 # The month column in the data is actually a Year-Month, here we will split that on the - delimiter and create a Year and Month_of_Year Column
-month_year_split = F.split(police_data_df['Month'], '-')
-police_data_df = police_data_df.withColumn('Year', month_year_split.getItem(0))\
-                .withColumn('Month_of_Year', month_year_split.getItem(1))
+police_data_clean = clean_months(police_data_df)
+# Now lets create a Location and Town/City Column
+police_data_clean = clean_location(police_data_clean)
 ```
+
+    Cleaning Year and Month Columns...
+    Creating Month_of_Year and Year columns...
+    Cleaning Complete
+    Cleaning Location and Town and City...
+    Cleaning Complete
+
 
 
 ```python
-# Ensure that both of the new columns created are integer and not string types
-police_data_df = police_data_df.withColumn("Month_of_Year", police_data_df.Month_of_Year.cast("int"))
-police_data_df = police_data_df.withColumn("Year", police_data_df.Year.cast("int"))
-```
-
-
-```python
-# Check this worked
-police_data_df.printSchema()
+police_data_clean.printSchema()
 ```
 
     root
@@ -252,8 +208,8 @@ police_data_df.printSchema()
      |-- Month: string (nullable = true)
      |-- Reported by: string (nullable = true)
      |-- Falls within: string (nullable = true)
-     |-- Longitude: string (nullable = true)
-     |-- Latitude: string (nullable = true)
+     |-- Longitude: double (nullable = true)
+     |-- Latitude: double (nullable = true)
      |-- Location: string (nullable = true)
      |-- LSOA code: string (nullable = true)
      |-- LSOA name: string (nullable = true)
@@ -261,47 +217,33 @@ police_data_df.printSchema()
      |-- Last outcome category: string (nullable = true)
      |-- Context: string (nullable = true)
      |-- Year: integer (nullable = true)
-     |-- Month_of_Year: integer (nullable = true)
+     |-- Month_of_Year: string (nullable = true)
+     |-- Town_City: string (nullable = true)
     
 
 
-
-```python
-# In order to convert the month from a number representing the month index, this function has been created to map that index
-# to its 3 letter abbreviation
-get_month_name = F.udf(lambda x: calendar.month_abbr[x])
-```
-
-
-```python
-# Apply get_month_name to the Month of Year Column
-police_data_df = police_data_df.withColumn("Month_of_Year", get_month_name(police_data_df["Month_of_Year"]))
-```
-
-
-```python
-# Now remove the On or near part of the string in Location as it adds no information
-police_data_df = police_data_df.withColumn('Location', F.regexp_replace('Location', 'On or near ', ''))
-```
-
-
-```python
-police_data_df = police_data_df.withColumn("Town_City", F.regexp_replace('LSOA name', ' [0-9]{3}\w', ''))
-```
-
-
-```python
-police_data_df.take(1)
-```
-
-
-
-
-    [Row(Crime ID='5ac3055389bf0d7f7598892a8835ce3b3a2745218bde6f9d16de014ee837ec1e', Month='2017-07', Reported by='Metropolitan Police Service', Falls within='Metropolitan Police Service', Longitude='0.763024', Latitude='51.210698', Location='Wind Hill Lane', LSOA code='E01024033', LSOA name='Ashford 002E', Crime type='Other theft', Last outcome category='Investigation complete; no suspect identified', Context=None, Year=2017, Month_of_Year='Jul', Town_City='Ashford')]
-
-
-
 ## Exploratory Analysis
+
+
+```python
+import pyspark.sql.functions as F
+```
+
+#### Are there any cases of when the constabulary that reported the crime is different to the constabulary area?
+
+
+```python
+police_data_df\
+    .where(F.col("Reported by") != F.col("Falls within"))\
+    .count()
+```
+
+
+
+
+    0
+
+
 
 #### Number of Incidents over time
 
@@ -331,13 +273,10 @@ plt.show()
 ```
 
 
-![png](output_37_0.png)
+![png](output_36_0.png)
 
 
-
-```python
-There isn'
-```
+There appears to be a linear trend and some periodicity with the numbers of reported crimes, although we do not have complete years in this dataset so we cannot truly infer this conclusion
 
 #### Most Common Crime and Outcome Category Combination
 
@@ -373,7 +312,7 @@ outcome_counts_series\
 
 
 
-![png](output_42_1.png)
+![png](output_41_1.png)
 
 
 #### The Most Common Type of Crime
@@ -401,7 +340,7 @@ plt.show()
 ```
 
 
-![png](output_46_0.png)
+![png](output_45_0.png)
 
 
 Anti-social behaviour makes up about 27% of crime in England - which is expected... It is concerning that violence and sexual offences is in second place
@@ -419,8 +358,15 @@ crime_town_city_counts = police_data_df\
 
 
 ```python
-crime_town_city_counts ## TO BE COMPLETED
+plt.figure(figsize=(10,5))
+sns.barplot(y=crime_town_city_counts.loc[1:20, "count"], x=crime_town_city_counts.loc[1:20, "Town_City"])
+plt.xticks(rotation=90)
+plt.show()
 ```
+
+
+![png](output_49_0.png)
+
 
 There appear to be a large amount of NAs....
 Lets find out what the NAs are being caused by
@@ -445,44 +391,83 @@ null_lsoa.count()/num_rows
 
 So only about two percent of the data has no location information, we can exclude this
 
-## Feature Engineering & Modelling
+## Feature Engineering
+
+Let's look at what the feature engineering code is actually doing
+
+
+```bash
+%%bash
+cat p04_feature_engineer.py
+```
+
+    import pyspark.sql.functions as F
+    
+    def get_modelling_data(df):
+        
+        select_cols = ["Falls within", "Town_City", "Crime type", "Last outcome category", "Month_of_Year"]
+        
+        # Remove the crimes with no crime ID and no LSOA Information.
+        # Then select the features of interest
+        
+        print('Filtering data with no Crime ID...')
+        police_data_modelling = df\
+            .filter(df["Crime ID"].isNotNull())\
+            .select(select_cols)
+        print('Filtering complete')
+        return police_data_modelling
+    
+    def make_item_sets(df):
+        # The FP growth algorithm (like association rules), needs the items to be concatenated into a list/array of "transactions".
+        print('Making item sets...')
+        print('Collapsing data to list of transactions')
+        police_item_set = df.withColumn("items", F.array(df["Falls within"],
+                                                         df["Town_City"],
+                                                         df["Crime type"],
+                                                         df["Last outcome category"],
+                                                         df["Month_of_Year"]))
+        # Select the items column and id
+        print('Adding increasing id column...')
+        
+        police_item_set = police_item_set\
+            .select("items")\
+            .withColumn("id", F.monotonically_increasing_id())
+        print('Itemset creation complete')
+        
+        return police_item_set
+    
+    
+    def feature_engineer(df):
+        """Invoke the full feature engineering pipeline"""
+        print('Starting Feature Engineering pipeline...')
+        selected_data = get_modelling_data(df)
+        item_sets = make_item_sets(selected_data)
+        print('Feature Engineering complet')
+        return item_sets
+
+
+
+```python
+from p04_feature_engineer import *
+```
 
 
 ```python
 # Remove the crimes with no crime ID and no LSOA Information.
-police_data_modelling = police_data_df.filter(police_data_df["Crime ID"].isNotNull() & police_data_df["LSOA name"].isNotNull())
-# Select the Features of interest
-police_data_modelling = police_data_modelling[["Falls within", "Town_City", "Crime type", "Last outcome category", "Month_of_Year"]]
+police_item_set = feature_engineer(police_data_clean)
 ```
 
-
-```python
-police_data_modelling.show(3)
-```
-
-    +--------------------+--------------------+-------------+---------------------+-------------+
-    |        Falls within|           Town_City|   Crime type|Last outcome category|Month_of_Year|
-    +--------------------+--------------------+-------------+---------------------+-------------+
-    |Metropolitan Poli...|             Ashford|  Other theft| Investigation com...|          Jul|
-    |Metropolitan Poli...|             Babergh| Public order| Investigation com...|          Jul|
-    |Metropolitan Poli...|Barking and Dagenham|Bicycle theft| Status update una...|          Jul|
-    +--------------------+--------------------+-------------+---------------------+-------------+
-    only showing top 3 rows
-    
+    Starting Feature Engineering pipeline...
+    Filtering data with no Crime ID...
+    Filtering complete
+    Making item sets...
+    Collapsing data to list of transactions
+    Adding increasing id column...
+    Itemset creation complete
+    Feature Engineering complet
 
 
 The FP growth algorithm (like association rules), needs the items to be concatenated into a list/array of "transactions".
-
-
-```python
-police_item_set = police_data_modelling.withColumn("items", F.array(police_data_modelling["Falls within"],
-                                                                    police_data_modelling["Town_City"],
-                                                                    police_data_modelling["Crime type"],
-                                                                    police_data_modelling["Last outcome category"],
-                                                                    police_data_modelling["Month_of_Year"]))
-police_item_set = police_item_set.select("items")
-police_item_set = police_item_set.withColumn("id", F.monotonically_increasing_id())
-```
 
 
 ```python
@@ -522,26 +507,31 @@ For Association rules
 
 
 ```python
-# Use a low support as we have a large dataset
-fpGrowth = FPGrowth(itemsCol="items", minSupport=0.01, minConfidence=0.6)
-model = fpGrowth.fit(police_item_set)
-rules = model.associationRules
+from p05_model import build_association_rule_model, extract_model_rules
 ```
+
+
+```python
+# Use a low support as we have a large dataset
+model = build_association_rule_model(police_item_set, min_support=0.01, min_confidence=0.6)
+```
+
+    Fitting FPGrowth....
+    Fit Complete
+
 
 #### Extract the Association Rules
 
 
 ```python
-#' Minor tidying to save as pandas dataframe
-rules_df = rules.withColumn("antecedent" ,F.concat_ws(",", rules["antecedent"]))\
-          .withColumn("consequent" ,F.concat_ws(",", rules["consequent"]))\
-          .sort(F.col("confidence"))
+rules_df_pd = extract_model_rules(model)
 ```
 
+    Extracting Rules...
+    Rule extraction complete
+    Collecting Rules to Pandas...
+    Collection Complete...
 
-```python
-rules_df_pd = rules_df.toPandas()
-```
 
 
 ```python
@@ -591,91 +581,91 @@ rules_df_pd
       <th>2</th>
       <td>West Yorkshire Police,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.607760</td>
+      <td>0.607850</td>
     </tr>
     <tr>
       <th>3</th>
       <td>Apr,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.617650</td>
+      <td>0.617538</td>
     </tr>
     <tr>
       <th>4</th>
       <td>Mar,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.621251</td>
+      <td>0.621105</td>
     </tr>
     <tr>
       <th>5</th>
       <td>Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.621682</td>
+      <td>0.621714</td>
     </tr>
     <tr>
       <th>6</th>
-      <td>Jul,Unable to prosecute suspect</td>
+      <td>May,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.621848</td>
+      <td>0.622566</td>
     </tr>
     <tr>
       <th>7</th>
-      <td>May,Unable to prosecute suspect</td>
+      <td>Jul,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.622494</td>
+      <td>0.622925</td>
     </tr>
     <tr>
       <th>8</th>
       <td>Jun,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.623000</td>
+      <td>0.623030</td>
     </tr>
     <tr>
       <th>9</th>
       <td>Criminal damage and arson</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.626508</td>
+      <td>0.624007</td>
     </tr>
     <tr>
       <th>10</th>
+      <td>Other theft</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.641287</td>
+    </tr>
+    <tr>
+      <th>11</th>
       <td>Manchester</td>
       <td>Investigation complete; no suspect identified</td>
       <td>0.641456</td>
     </tr>
     <tr>
-      <th>11</th>
+      <th>12</th>
       <td>Manchester,Greater Manchester Police</td>
       <td>Investigation complete; no suspect identified</td>
       <td>0.641596</td>
     </tr>
     <tr>
-      <th>12</th>
-      <td>Other theft</td>
-      <td>Investigation complete; no suspect identified</td>
-      <td>0.644389</td>
-    </tr>
-    <tr>
       <th>13</th>
       <td>Vehicle crime</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.702534</td>
+      <td>0.698974</td>
     </tr>
     <tr>
       <th>14</th>
       <td>Burglary</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.705977</td>
+      <td>0.704225</td>
     </tr>
     <tr>
       <th>15</th>
       <td>Bicycle theft</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.726171</td>
+      <td>0.720710</td>
     </tr>
     <tr>
       <th>16</th>
       <td>Vehicle crime,Status update unavailable</td>
       <td>Metropolitan Police Service</td>
-      <td>0.774634</td>
+      <td>0.751311</td>
     </tr>
     <tr>
       <th>17</th>
@@ -799,91 +789,91 @@ useful_rules_df
       <th>16</th>
       <td>Vehicle crime,Status update unavailable</td>
       <td>Metropolitan Police Service</td>
-      <td>0.774634</td>
+      <td>0.751311</td>
     </tr>
     <tr>
       <th>15</th>
       <td>Bicycle theft</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.726171</td>
+      <td>0.720710</td>
     </tr>
     <tr>
       <th>14</th>
       <td>Burglary</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.705977</td>
+      <td>0.704225</td>
     </tr>
     <tr>
       <th>13</th>
       <td>Vehicle crime</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.702534</td>
+      <td>0.698974</td>
     </tr>
     <tr>
       <th>12</th>
-      <td>Other theft</td>
-      <td>Investigation complete; no suspect identified</td>
-      <td>0.644389</td>
-    </tr>
-    <tr>
-      <th>11</th>
       <td>Manchester,Greater Manchester Police</td>
       <td>Investigation complete; no suspect identified</td>
       <td>0.641596</td>
     </tr>
     <tr>
-      <th>10</th>
+      <th>11</th>
       <td>Manchester</td>
       <td>Investigation complete; no suspect identified</td>
       <td>0.641456</td>
     </tr>
     <tr>
+      <th>10</th>
+      <td>Other theft</td>
+      <td>Investigation complete; no suspect identified</td>
+      <td>0.641287</td>
+    </tr>
+    <tr>
       <th>9</th>
       <td>Criminal damage and arson</td>
       <td>Investigation complete; no suspect identified</td>
-      <td>0.626508</td>
+      <td>0.624007</td>
     </tr>
     <tr>
       <th>8</th>
       <td>Jun,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.623000</td>
+      <td>0.623030</td>
     </tr>
     <tr>
       <th>7</th>
-      <td>May,Unable to prosecute suspect</td>
+      <td>Jul,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.622494</td>
+      <td>0.622925</td>
     </tr>
     <tr>
       <th>6</th>
-      <td>Jul,Unable to prosecute suspect</td>
+      <td>May,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.621848</td>
+      <td>0.622566</td>
     </tr>
     <tr>
       <th>5</th>
       <td>Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.621682</td>
+      <td>0.621714</td>
     </tr>
     <tr>
       <th>4</th>
       <td>Mar,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.621251</td>
+      <td>0.621105</td>
     </tr>
     <tr>
       <th>3</th>
       <td>Apr,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.617650</td>
+      <td>0.617538</td>
     </tr>
     <tr>
       <th>2</th>
       <td>West Yorkshire Police,Unable to prosecute suspect</td>
       <td>Violence and sexual offences</td>
-      <td>0.607760</td>
+      <td>0.607850</td>
     </tr>
     <tr>
       <th>1</th>
@@ -903,15 +893,20 @@ useful_rules_df
 
 
 
-Now the rule with the highest confidence is **(Vehicle Crime + Status update unavailable -> Metropolitan Police Service)**. So what does this mean? This means that 77% of the time, when a Vehicle Crime occured that has no Status update about its outcome, it fell within the jurisdiction of the Metropolitan Police.
+Now the rule with the highest confidence is **(Vehicle Crime + Status update unavailable -> Metropolitan Police Service)**. So what does this mean? This means that given that a crime is a vehicle crime and there is no status update, the probability that it falls within the constabulary of the Metropolitan Police is around 75% 
 
-The other 3 rules in the 70%+ confidence/conditional probability region follow a similar pattern.
+The other 3 rules in the 69%+ confidence/conditional probability region follow a similar pattern.
 - **(Bicycle Theft -> Investigation complete; no suspect identified)**
 - **(Burglary -> Investigation complete; no suspect identified)**
 - **(Vehicle Crime -> Investigation complete; no suspect identified)**
 
-So, it implies that the probability of no suspect being identified after a bike theft, burglary or vehicle crime is about 70-72%.
+So, it implies that the probability of no suspect being identified after a bike theft, burglary or vehicle crime is about 69-72%.
 
-Another interesting rule is **(Manchester -> Investigation complete; no suspect identified)** with a probability of 64%. Good thing I have never been to Manchester!
+Another interesting rule is **(Manchester -> Investigation complete; no suspect identified)**. So what this is saying is, the model estimates that the probability that a reported crime leads to a complete investigation with no suspect identified, given that the crime occurred in Manchester around 64%
 
 Another block of these rules is **(Unable to prosecute suspect -> Violence and sexual offences)**, which sounds worrying but doesn't really say much. The conditional probability of a crime being a violence and sexual offence, given that you were unable to prosecute the suspect is around 62%.
+
+
+```python
+sc.stop()
+```
