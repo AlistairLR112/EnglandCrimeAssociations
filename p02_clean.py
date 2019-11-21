@@ -24,7 +24,7 @@ def clean_months(df):
     df_with_month = df.withColumn("Month_of_Year", get_month_name(df["Month_of_Year"]))
     
     print('Cleaning Complete')
-    
+
     return df_with_month
 
 
@@ -37,4 +37,11 @@ def clean_location(df):
     print('Cleaning Complete')
     return df_with_location
 
+def clean_non_england(df):
+    print('Removing non England and Wales entries')
+    df_england = df.where((df["Falls within"] != "Police Service of Northern Ireland") & (df["Falls within"] != "British Transport Police"))
+    print('Removal Complete')
+    return df_england
+
+    
     

@@ -1,5 +1,5 @@
 from pyspark.ml.fpm import FPGrowth
-import pyspark.sql.functions as F
+from pyspark.sql.functions import concat_ws, col
 import pandas as pd
 
 def build_association_rule_model(item_set, min_support, min_confidence):
@@ -22,9 +22,9 @@ def extract_model_rules(model):
     
     print('Collecting Rules to Pandas...')
     rules_df = rules\
-            .withColumn("antecedent" ,F.concat_ws(",", rules["antecedent"]))\
-            .withColumn("consequent" ,F.concat_ws(",", rules["consequent"]))\
-            .sort(F.col("confidence"))\
+            .withColumn("antecedent" ,concat_ws(",", rules["antecedent"]))\
+            .withColumn("consequent" ,concat_ws(",", rules["consequent"]))\
+            .sort(col("confidence"))\
             .toPandas()
     print('Collection Complete...')
     
