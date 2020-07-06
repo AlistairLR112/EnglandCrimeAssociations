@@ -292,7 +292,7 @@ plt.show()
 
 
 
-![png](output_35_1.png)
+![png](output_36_0.png)
 
 
 There appears to be a stationary trend with some periodicity with the numbers of reported crimes, although we do not have complete years in this dataset. It looks like there is a pattern to the level/numbers of street crimes!
@@ -312,7 +312,7 @@ plt.show()
 
 
 
-![png](output_38_1.png)
+![png](output_41_1.png)
 
 
 It seems the most common type to outcome association is an anti social behaviour crime with no recorded outcome
@@ -331,7 +331,7 @@ plt.show()
 
 
 
-![png](output_41_1.png)
+![png](output_45_0.png)
 
 
 Anti-social behaviour makes up about 35% of crime in England - which is expected... It is concerning that violence and sexual offences is in second place
